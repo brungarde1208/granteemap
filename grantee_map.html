@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Grantee Activity Map</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500;600&display=swap');
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0d1117;--surface:#161b26;--surface2:#1c2232;--border:#242d45;
+    --text:#e6e9f0;--muted:#6b7599;
+    --accent:#3d8ef8;--green:#30cda8;--gold:#f0b429;--red:#e55353;--purple:#a78bfa;
+  }
+  body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+  header{padding:14px 32px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:20px;flex-shrink:0;background:var(--surface)}
+  header h1{font-family:'DM Serif Display',serif;font-size:21px;color:var(--text);white-space:nowrap}
+  .hdiv{width:1px;height:26px;background:var(--border)}
+  .stat{font-size:12px;color:var(--muted)}.stat strong{color:var(--text);font-weight:600}
+  .controls{padding:9px 32px;display:flex;gap:7px;align-items:center;border-bottom:1px solid var(--border);flex-shrink:0;background:rgba(22,27,38,.9)}
+  .clabel{font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin-right:4px}
+  .fb{padding:5px 13px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:5px}
+  .fb:hover{border-color:var(--accent);color:var(--accent)}
+  .fb.active{background:var(--accent);border-color:var(--accent);color:#fff}
+  .fb[data-filter="TA"].active{background:var(--green);border-color:var(--green)}
+  .fb[data-filter="Legislative Action"].active{background:var(--gold);border-color:var(--gold);color:#111}
+  .fb[data-filter="Elections"].active{background:var(--red);border-color:var(--red)}
+  .fb[data-filter="Coalition-building"].active{background:var(--purple);border-color:var(--purple)}
+  .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+  .main{display:flex;flex:1;overflow:hidden}
+  .mapwrap{flex:1;display:flex;flex-direction:column;padding:14px 20px 14px 32px;min-width:0;gap:10px}
+  #mapsvg{flex:1;width:100%;min-height:0}
+  .state{stroke:#0d1117;stroke-width:.6;cursor:pointer;transition:filter .12s}
+  .state:hover{filter:brightness(1.6) drop-shadow(0 0 5px rgba(61,142,248,.6))}
+  .state.sel{stroke:#fff;stroke-width:1.8;filter:brightness(1.7)}
+  .sborder{fill:none;stroke:#0d1117;stroke-width:.6;pointer-events:none}
+  .legend{display:flex;align-items:center;gap:14px;flex-shrink:0}
+  .ltitle{font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.7px}
+  .lbar{width:110px;height:8px;border-radius:4px;background:linear-gradient(to right,#1a3a6b,#1e5ba0,#2879d4,#4f9ef7,#7ab8ff)}
+  .llabels{display:flex;justify-content:space-between;width:110px;font-size:9px;color:var(--muted);margin-top:2px}
+  .hint{font-size:11px;color:var(--muted);opacity:.6}
+  .panel{width:365px;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0}
+  .ph{padding:16px 20px 13px;border-bottom:1px solid var(--border);background:var(--surface2)}
+  .ph h2{font-family:'DM Serif Display',serif;font-size:19px;color:var(--text);display:flex;align-items:center;gap:9px}
+  .chip{display:inline-flex;align-items:center;justify-content:center;min-width:21px;height:21px;padding:0 6px;border-radius:11px;background:var(--accent);color:#fff;font-size:11px;font-weight:700;font-family:'DM Sans',sans-serif}
+  .ph p{font-size:12px;color:var(--muted);margin-top:3px}
+  .pb{flex:1;overflow-y:auto;padding:12px 18px}
+  .pb::-webkit-scrollbar{width:4px}.pb::-webkit-scrollbar-track{background:transparent}.pb::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+  .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--muted);text-align:center;gap:12px;padding:36px 20px}
+  .empty svg{opacity:.22}.empty h3{font-size:14px;font-weight:500}.empty p{font-size:12px;line-height:1.65}
+  .card{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:12px 14px;margin-bottom:9px;transition:border-color .15s,transform .1s;animation:fi .2s ease both}
+  @keyframes fi{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+  .card:hover{border-color:rgba(61,142,248,.45);transform:translateX(1px)}
+  .ctop{display:flex;align-items:flex-start;justify-content:space-between;gap:7px;margin-bottom:8px}
+  .gname{font-weight:600;font-size:14px;color:var(--text);flex:1;line-height:1.3}
+  .badges{display:flex;gap:3px;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0}
+  .badge{display:inline-block;padding:2px 7px;border-radius:9px;font-size:9px;font-weight:700;white-space:nowrap}
+  .bTA{background:rgba(48,205,168,.14);color:var(--green);border:1px solid rgba(48,205,168,.28)}
+  .bLeg{background:rgba(240,180,41,.14);color:var(--gold);border:1px solid rgba(240,180,41,.28)}
+  .bElec{background:rgba(229,83,83,.14);color:var(--red);border:1px solid rgba(229,83,83,.28)}
+  .bCoal{background:rgba(167,139,250,.14);color:var(--purple);border:1px solid rgba(167,139,250,.28)}
+  .bsec{display:flex;align-items:flex-start;gap:7px;margin-bottom:7px}
+  .blabel{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;padding-top:2px}
+  .btags{display:flex;flex-wrap:wrap;gap:3px}
+  .btag{background:rgba(61,142,248,.1);border:1px solid rgba(61,142,248,.2);color:var(--accent);font-size:10px;font-weight:500;padding:2px 7px;border-radius:4px}
+  .btbd{background:rgba(107,117,153,.1);border:1px solid rgba(107,117,153,.18);color:var(--muted);font-size:10px;font-weight:500;padding:2px 7px;border-radius:4px;font-style:italic}
+  .desc{font-size:12px;color:#838dab;line-height:1.65;border-top:1px solid var(--border);padding-top:7px;margin-top:1px}
+  #tip{position:fixed;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'DM Sans',sans-serif;font-size:12px;padding:6px 12px;border-radius:7px;pointer-events:none;display:none;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.5)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Grantee Activity Map</h1>
+  <div class="hdiv"></div>
+  <div class="stat"><strong id="ts">0</strong> states covered</div>
+  <div class="stat"><strong id="te">0</strong> grantee entries</div>
+</header>
+<div class="controls">
+  <span class="clabel">Filter</span>
+  <button class="fb active" data-filter="All">All Activity</button>
+  <button class="fb" data-filter="TA"><span class="dot" style="background:var(--green)"></span>Technical Assistance</button>
+  <button class="fb" data-filter="Legislative Action"><span class="dot" style="background:var(--gold)"></span>Legislative Action</button>
+  <button class="fb" data-filter="Elections"><span class="dot" style="background:var(--red)"></span>Elections</button>
+  <button class="fb" data-filter="Coalition-building"><span class="dot" style="background:var(--purple)"></span>Coalition-building</button>
+</div>
+<div class="main">
+  <div class="mapwrap">
+    <svg id="mapsvg"></svg>
+    <div class="legend">
+      <span class="ltitle">Grantees per state</span>
+      <div style="display:flex;align-items:center;gap:5px">
+        <div style="width:14px;height:8px;border-radius:3px;background:#4a5270;border:1px solid #5a6280;flex-shrink:0"></div>
+        <span style="font-size:10px;color:var(--muted);margin-right:6px">0</span>
+      </div>
+      <div>
+        <div class="lbar"></div>
+        <div class="llabels"><span>1</span><span>5</span><span>9+</span></div>
+      </div>
+      <span class="hint">← Click a state to explore</span>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="ph">
+      <h2 id="ptitle">Select a State</h2>
+      <p id="psub">Click any state on the map</p>
+    </div>
+    <div class="pb" id="pb">
+      <div class="empty">
+        <svg width="50" height="50" viewBox="0 0 24 24" fill="none" stroke="#6b7599" stroke-width="1.1">
+          <path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+        </svg>
+        <h3>No state selected</h3>
+        <p>Click any state to see which grantees are active there, view bill tracking details, and read activity descriptions.</p>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="tip"></div>
+
+<script>
+const DATA=[
+  {state:"Maryland",grantee:"Permit Power",types:["Legislative Action"],bills:"TBD",desc:"Working with Fraser-Hidalgo on soft cost reduction bill to strengthen compliance with SB783 automated permitting requirement, require remote inspections, cap permitting fees, and standardize code for installs. Supported by SUN, PIRG, Chesapeake Solar, and solar installers."},
+  {state:"Pennsylvania",grantee:"EPIC",types:["TA"],bills:"N/A",desc:"Working with Clean Tomorrow on case study of permitting tech effort. Expanded state-level partnership to provide staff details to support faster permitting. Developing a state-specific summary of the permitting landscape."},
+  {state:"Michigan",grantee:"EPIC",types:["TA"],bills:"N/A",desc:"Working with Clean Tomorrow on case study of permitting tech effort."},
+  {state:"North Carolina",grantee:"Siting Solutions Project",types:["TA","Legislative Action"],bills:"TBD",desc:"TBD"},
+  {state:"Ohio",grantee:"Siting Solutions Project",types:["TA","Legislative Action"],bills:"TBD",desc:"TBD"},
+  {state:"Arizona",grantee:"DownBallot",types:["Elections"],bills:"N/A",desc:"Supports pro-build candidates at the local level."},
+  {state:"Arkansas",grantee:"DownBallot",types:["Elections"],bills:"N/A",desc:"Supports pro-build candidates at the local level."},
+  {state:"Georgia",grantee:"DownBallot",types:["Elections"],bills:"N/A",desc:"Supports pro-build candidates at the local level."},
+  {state:"Illinois",grantee:"DownBallot",types:["Elections"],bills:"N/A",desc:"Supports pro-build candidates at the local level."},
+  {state:"Indiana",grantee:"DownBallot",types:["Elections"],bills:"N/A",desc:"Supports pro-build candidates at the local level."},
+  {state:"Iowa",grantee:"DownBallot",types:["Elections"],bills:"N/A",desc:"Supports pro-build candidates at the local level."},
+  {state:"Kansas",grantee:"DownBallot",types:["Elections"],bills:"N/A",desc:"Supports pro-build candidates at the local level."},
+  {state:"Kentucky",grantee:"DownBallot",types:["Elections"],bills:"N/A",desc:"Supports pro-build candidates at the local level."},
+  {state:"Louisiana",grantee:"DownBallot",types:["Elections"],bills:"N/A",desc:"Supports pro-build candidates at the local level."},
+  {state:"Michigan",grantee:"DownBallot",types:["Elections"],bills:"N/A",desc:"Supports pro-build candidates at the local level."},
+  {state:"Missouri",grantee:"DownBallot",types:["Elections"],bills:"N/A",desc:"Supports pro-build candidates at the local level."},
+  {state:"Nebraska",grantee:"DownBallot",types:["Elections"],bills:"N/A",desc:"Supports pro-build candidates at the local level."},
+  {state:"Nevada",grantee:"DownBallot",types:["Elections"],bills:"N/A",desc:"Supports pro-build candidates at the local level."},
+  {state:"New Mexico",grantee:"DownBallot",types:["Elections"],bills:"N/A",desc:"Supports pro-build candidates at the local level."},
+  {state:"North Carolina",grantee:"DownBallot",types:["Elections"],bills:"N/A",desc:"Supports pro-build candidates at the local level."},
+  {state:"Ohio",grantee:"DownBallot",types:["Elections"],bills:"N/A",desc:"Supports pro-build candidates at the local level."},
+  {state:"Pennsylvania",grantee:"DownBallot",types:["Elections"],bills:"N/A",desc:"Supports pro-build candidates at the local level."},
+  {state:"Virginia",grantee:"DownBallot",types:["Elections"],bills:"N/A",desc:"Supports pro-build candidates at the local level."},
+  {state:"Wisconsin",grantee:"DownBallot",types:["Elections"],bills:"N/A",desc:"Supports pro-build candidates at the local level."},
+  {state:"Colorado",grantee:"Siting Solutions Project",types:["TA","Legislative Action"],bills:"SB 33",desc:"SB33 establishes Clean Energy Permitting Coordination Office."},
+  {state:"Arizona",grantee:"Permit Power",types:["Legislative Action"],bills:"SB1241",desc:"Running legislation to allow simple home improvement projects to receive streamlined permitting. Backed by Arizona Association of Realtors, American Subcontractors Association, and Pacific Legal Foundation."},
+  {state:"Louisiana",grantee:"Siting Solutions Project",types:["TA","Legislative Action"],bills:"TBD",desc:"Reforms forthcoming."},
+  {state:"Virginia",grantee:"EPIC",types:["TA"],bills:"N/A",desc:"Published a report on permitting transparency efforts. Developing a state-specific summary of the permitting landscape."},
+  {state:"Connecticut",grantee:"EPIC",types:["TA"],bills:"N/A",desc:"Published a report on Permitting Concierge team to support large infrastructure projects."},
+  {state:"Florida",grantee:"EPIC",types:["TA"],bills:"N/A",desc:"Plan to conduct comparative analysis of permitting reform initiatives launched by Governors."},
+  {state:"Illinois",grantee:"EPIC",types:["TA"],bills:"N/A",desc:"Plan to conduct comparative analysis of permitting reform initiatives launched by Governors."},
+  {state:"Kentucky",grantee:"EPIC",types:["TA"],bills:"N/A",desc:"Plan to conduct comparative analysis of permitting reform initiatives launched by Governors."},
+  {state:"Texas",grantee:"EPIC",types:["TA"],bills:"N/A",desc:"Plan to conduct comparative analysis of permitting reform initiatives launched by Governors."},
+  {state:"Alaska",grantee:"NGA",types:["TA"],bills:"N/A",desc:"NGA works with stakeholders to facilitate solutions to a specific energy policy challenge/objective."},
+  {state:"Colorado",grantee:"NGA",types:["TA"],bills:"N/A",desc:"NGA works with stakeholders to facilitate solutions to a specific energy policy challenge/objective."},
+  {state:"North Carolina",grantee:"NGA",types:["TA"],bills:"N/A",desc:"NGA works with stakeholders to facilitate solutions to a specific energy policy challenge/objective."},
+  {state:"Oregon",grantee:"NGA",types:["TA"],bills:"N/A",desc:"NGA works with stakeholders to facilitate solutions to a specific energy policy challenge/objective."},
+  {state:"Virginia",grantee:"Permit Power",types:["Legislative Action"],bills:"SB382/HB590",desc:"Majority Leader Surovell and Delegate Hernandez introduced bill for state-wide automated permitting for rooftop solar and batteries."},
+  {state:"Illinois",grantee:"Permit Power",types:["Legislative Action"],bills:"HB5424",desc:"Introduced bill to legalize plug-in solar. Supported by Illinois Environmental Council, Vote Solar, and Brightsaver. Considering a run at instant permitting legislation."},
+  {state:"Colorado",grantee:"Permit Power",types:["Legislative Action"],bills:"HB26-1007",desc:"Introduced bill to legalize plug-in solar and allow for meter collars to avoid home panel upgrades."},
+  {state:"Florida",grantee:"Permit Power",types:["Legislative Action"],bills:"SB968/HB1049",desc:"Introduced bill to exempt solar and battery systems from local permitting and HOA approvals, and exempt all simple renovation projects. Supporters include Florida Homebuilders Association and AFP."},
+  {state:"New York",grantee:"Permit Power",types:["Legislative Action"],bills:"S5781A/A6270B",desc:"Introduced automated permitting legislation, working with localities to overcome concerns of local control."},
+  {state:"Massachusetts",grantee:"Permit Power",types:["Legislative Action"],bills:"H4744/S2780",desc:"Instant permitting legislation included in House energy bill and voted out of Senate as a stand-alone bill."},
+  {state:"New Jersey",grantee:"EPIC",types:["TA"],bills:"N/A",desc:"In conversation with RAF, Clean Tomorrow to support NJ state permitting dashboard. Expanded state-level partnership to provide staff details to support faster permitting."},
+  {state:"Iowa",grantee:"Siting Solutions Project",types:["TA","Legislative Action"],bills:"HF2081, HF2284, HF2446, HF2580, HSB317, HSB692",desc:"Multiple bills covering: wind turbine light standards & penalties (HF2081), routine inspections (HF2284), subsurface surveys (HF2446), eminent domain bans (HF2580, HSB692), and setback standards (HSB317)."},
+  {state:"Virginia",grantee:"Siting Solutions Project",types:["TA","Legislative Action"],bills:"HB429, HB711, HB891, HB895, HB920, SB175",desc:"Multiple bills covering IRP timelines, local standards for solar facilities, battery storage approvals, energy storage targets, offshore wind capacity, and RPS requirements."},
+  {state:"Oklahoma",grantee:"Siting Solutions Project",types:["TA","Legislative Action"],bills:"HB2972, HB3333, HB3464, HB3723, SB1510, SB1606",desc:"Multiple bills covering local control over siting, commercial wind energy modification, battery storage regulation, new local approval requirements, surety bonds, and wind energy decommissioning."},
+  {state:"Kansas",grantee:"Siting Solutions Project",types:["TA","Legislative Action"],bills:"HB2636/SB417, HB2664",desc:"HB2636/SB417 sets requirements for energy facilities and provides SCC jurisdiction over permitting. HB2664 Private Energy Campus and Industrial Host-Site Electric Generation Act."},
+  {state:"Indiana",grantee:"Siting Solutions Project",types:["TA","Legislative Action"],bills:"HB1333, SB54",desc:"HB1333 revises zoning on agriculture lands and modifies public hearing/liability rules. SB54 requires rezoning of all affected districts before zoning overlay for commercial solar can be established."},
+  {state:"Arizona",grantee:"WEC",types:["Coalition-building"],bills:"N/A",desc:"Fosters bipartisan dialogue among state legislators on energy issues facing the Western region."},
+  {state:"California",grantee:"WEC",types:["Coalition-building"],bills:"N/A",desc:"Fosters bipartisan dialogue among state legislators on energy issues facing the Western region."},
+  {state:"Colorado",grantee:"WEC",types:["Coalition-building"],bills:"N/A",desc:"Fosters bipartisan dialogue among state legislators on energy issues facing the Western region."},
+  {state:"Idaho",grantee:"WEC",types:["Coalition-building"],bills:"N/A",desc:"Fosters bipartisan dialogue among state legislators on energy issues facing the Western region."},
+  {state:"Montana",grantee:"WEC",types:["Coalition-building"],bills:"N/A",desc:"Fosters bipartisan dialogue among state legislators on energy issues facing the Western region."},
+  {state:"Nevada",grantee:"WEC",types:["Coalition-building"],bills:"N/A",desc:"Fosters bipartisan dialogue among state legislators on energy issues facing the Western region."},
+  {state:"New Mexico",grantee:"WEC",types:["Coalition-building"],bills:"N/A",desc:"Fosters bipartisan dialogue among state legislators on energy issues facing the Western region."},
+  {state:"Oregon",grantee:"WEC",types:["Coalition-building"],bills:"N/A",desc:"Fosters bipartisan dialogue among state legislators on energy issues facing the Western region."},
+  {state:"Utah",grantee:"WEC",types:["Coalition-building"],bills:"N/A",desc:"Fosters bipartisan dialogue among state legislators on energy issues facing the Western region."},
+  {state:"Washington",grantee:"WEC",types:["Coalition-building"],bills:"N/A",desc:"Fosters bipartisan dialogue among state legislators on energy issues facing the Western region."},
+  {state:"Wyoming",grantee:"WEC",types:["Coalition-building"],bills:"N/A",desc:"Fosters bipartisan dialogue among state legislators on energy issues facing the Western region."},
+  {state:"Maryland",grantee:"EPIC",types:["TA"],bills:"N/A",desc:"Expanded state-level partnership to provide staff details to support faster permitting. Developing a state-specific summary of the permitting landscape."},
+  {state:"New York",grantee:"EPIC",types:["TA"],bills:"N/A",desc:"Expanded state-level partnership to provide staff details to support faster permitting."},
+  {state:"Arizona",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Arkansas",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"California",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Colorado",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Connecticut",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Delaware",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Florida",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Idaho",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Illinois",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Indiana",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Iowa",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Kansas",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Kentucky",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Louisiana",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Maine",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Maryland",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Massachusetts",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Michigan",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Minnesota",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Missouri",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Montana",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Nebraska",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Nevada",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"New Hampshire",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"New Jersey",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"New Mexico",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"New York",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"North Carolina",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"North Dakota",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Ohio",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Oklahoma",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Oregon",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Pennsylvania",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"South Carolina",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"South Dakota",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Tennessee",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Texas",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Utah",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Vermont",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Virginia",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Washington",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"West Virginia",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Wisconsin",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"Wyoming",grantee:"R Street",types:["TA"],bills:"N/A",desc:"Education and outreach efforts including one pagers, direct lawmaker education, and testimony."},
+  {state:"California",grantee:"EPIC",types:["TA"],bills:"N/A",desc:"Developing a state-specific summary of the permitting landscape."},
+  {state:"Arizona",grantee:"FAI",types:["TA"],bills:"N/A",desc:"Conduct educational outreach and TA for environmental reform strategies."},
+  {state:"Montana",grantee:"FAI",types:["TA"],bills:"N/A",desc:"Conduct educational outreach and TA for environmental reform strategies."},
+  {state:"Utah",grantee:"FAI",types:["TA"],bills:"N/A",desc:"Conduct educational outreach and TA for environmental reform strategies."},
+  {state:"California",grantee:"Permit Power",types:["Legislative Action"],bills:"TBD",desc:"Co-leading effort to allow remote inspection for simple home renovations."},
+  {state:"New Jersey",grantee:"Permit Power",types:["Legislative Action"],bills:"TBD",desc:"Automated permitting legislation signed into law 2025, working on implementation. Working with Senator Zwicker on bill to legalize plug-in solar. Working with NRDC and EDF on bill for flexible interconnection for EVSE and distribution generation."},
+  {state:"California",grantee:"Grid Strategies (Houtan)",types:["TA"],bills:"N/A",desc:"Energy siting reform gap analysis across five U.S. states, identifying best practices, procedural inefficiencies, and policy opportunities to accelerate clean energy deployment."},
+  {state:"Illinois",grantee:"Grid Strategies (Houtan)",types:["TA"],bills:"N/A",desc:"Energy siting reform gap analysis across five U.S. states, identifying best practices, procedural inefficiencies, and policy opportunities to accelerate clean energy deployment."},
+  {state:"Michigan",grantee:"Grid Strategies (Houtan)",types:["TA"],bills:"N/A",desc:"Energy siting reform gap analysis across five U.S. states, identifying best practices, procedural inefficiencies, and policy opportunities to accelerate clean energy deployment."},
+  {state:"New York",grantee:"Grid Strategies (Houtan)",types:["TA"],bills:"N/A",desc:"Energy siting reform gap analysis across five U.S. states, identifying best practices, procedural inefficiencies, and policy opportunities to accelerate clean energy deployment."},
+  {state:"Washington",grantee:"Grid Strategies (Houtan)",types:["TA"],bills:"N/A",desc:"Energy siting reform gap analysis across five U.S. states, identifying best practices, procedural inefficiencies, and policy opportunities to accelerate clean energy deployment."},
+  {state:"Arkansas",grantee:"CEBA",types:["TA","Legislative Action"],bills:"",desc:"Goal to build a campaign around governors and commissioners in key states to support Tranche 4 transmission planning in MISO."},
+  {state:"California",grantee:"CATF",types:["Legislative Action"],bills:"",desc:"Stakeholder education on decarbonization technologies including clean electricity standards, improving planning/modeling, removal of moratoriums, and state procurement. Also provides direct lobbying and paid media to support policies."},
+  {state:"Colorado",grantee:"CATF",types:["Legislative Action"],bills:"",desc:"Stakeholder education on decarbonization technologies including clean electricity standards, improving planning/modeling, removal of moratoriums, and state procurement. Also provides direct lobbying and paid media to support policies."},
+  {state:"Florida",grantee:"Abundance Institute",types:["TA","Legislative Action"],bills:"",desc:"Working with James Madison Institute to improve regulation and policy to enable energy abundance and grid modernization. Creating new opportunities for flexible interconnection."},
+  {state:"Georgia",grantee:"CEBA",types:["TA","Legislative Action"],bills:"",desc:"Intervening in Georgia Power's IRP, and instrumental in getting CIR program to allow large energy customers to bring clean capacity to the grid."},
+  {state:"Illinois",grantee:"CATF",types:["Legislative Action"],bills:"",desc:"Stakeholder education on decarbonization technologies including clean electricity standards, improving planning/modeling, removal of moratoriums, and state procurement. Also provides direct lobbying and paid media to support policies."},
+  {state:"Kentucky",grantee:"CEBA",types:["TA","Legislative Action"],bills:"",desc:"Targeted outreach to utility commissioners in key PJM states that have obstacles to workable cost allocation paradigms."},
+  {state:"Louisiana",grantee:"Abundance Institute",types:["TA","Legislative Action"],bills:"",desc:"Working with Pelican Institute to improve regulation and policy to enable energy abundance and grid modernization. Automated/streamlined permitting for DERs. Creating new opportunities for flexible interconnection."},
+  {state:"Louisiana",grantee:"CEBA",types:["TA","Legislative Action"],bills:"",desc:"Goal to build a campaign around governors and commissioners in key states to support Tranche 4 transmission planning in MISO."},
+  {state:"Louisiana",grantee:"CATF",types:["Legislative Action"],bills:"",desc:"Stakeholder education on decarbonization technologies including clean electricity standards, improving planning/modeling, removal of moratoriums, and state procurement. Also provides direct lobbying and paid media to support policies."},
+  {state:"Michigan",grantee:"CATF",types:["Legislative Action"],bills:"",desc:"Stakeholder education on decarbonization technologies including clean electricity standards, improving planning/modeling, removal of moratoriums, and state procurement. Also provides direct lobbying and paid media to support policies."},
+  {state:"Missouri",grantee:"CEBA",types:["TA","Legislative Action"],bills:"",desc:"Goal to build a campaign around governors and commissioners in key states to support Tranche 4 transmission planning in MISO."},
+  {state:"New Mexico",grantee:"CATF",types:["Legislative Action"],bills:"",desc:"Stakeholder education on decarbonization technologies including clean electricity standards, improving planning/modeling, removal of moratoriums, and state procurement. Also provides direct lobbying and paid media to support policies."},
+  {state:"New York",grantee:"CATF",types:["Legislative Action"],bills:"",desc:"Stakeholder education on decarbonization technologies including clean electricity standards, improving planning/modeling, removal of moratoriums, and state procurement. Also provides direct lobbying and paid media to support policies."},
+  {state:"North Carolina",grantee:"CEBA",types:["TA","Legislative Action"],bills:"",desc:"Will engage with Duke Energy's Clean Transition Tariff and/or IRP. Will identify opportunities to intervene on utility planning processes. Education on benefits of an energy imbalance market as a step towards a regional market."},
+  {state:"North Carolina",grantee:"CATF",types:["Legislative Action"],bills:"",desc:"Stakeholder education on decarbonization technologies including clean electricity standards, improving planning/modeling, removal of moratoriums, and state procurement. Also provides direct lobbying and paid media to support policies."},
+  {state:"Ohio",grantee:"CEBA",types:["TA","Legislative Action"],bills:"",desc:"Targeted outreach to utility commissioners in key PJM states that have obstacles to workable cost allocation paradigms."},
+  {state:"Pennsylvania",grantee:"Siting Solutions Project",types:["TA","Legislative Action"],bills:"TBD",desc:""},
+  {state:"Pennsylvania",grantee:"CATF",types:["Legislative Action"],bills:"",desc:"Steers Energy Futures PA to support clean energy in PA. Stakeholder education on decarbonization technologies including clean electricity standards, improving planning/modeling, removal of moratoriums, and state procurement."},
+  {state:"South Carolina",grantee:"CEBA",types:["TA","Legislative Action"],bills:"",desc:"Education of stakeholders in Carolinas on benefits of an energy imbalance market as a step towards a regional market."},
+  {state:"Tennessee",grantee:"CEBA",types:["TA","Legislative Action"],bills:"",desc:"Targeted engagement in TVA IRP process."},
+  {state:"Texas",grantee:"Siting Solutions Project",types:["TA","Legislative Action"],bills:"TBD",desc:""},
+  {state:"Texas",grantee:"Abundance Institute",types:["TA","Legislative Action"],bills:"",desc:"Creating new opportunities for flexible interconnection."},
+  {state:"Texas",grantee:"CEBA",types:["TA","Legislative Action"],bills:"",desc:"Goal to pass legislation to direct PUC to reform long-term transmission planning, implement rulemaking, support implementation of GETs, and conduct at least 10-year planning for transmission."},
+  {state:"Texas",grantee:"CATF",types:["Legislative Action"],bills:"",desc:"Stakeholder education on decarbonization technologies including clean electricity standards, improving planning/modeling, removal of moratoriums, and state procurement. Also provides direct lobbying and paid media to support policies."},
+  {state:"Utah",grantee:"Abundance Institute",types:["TA","Legislative Action"],bills:"",desc:"Expanding competitive supply options by removing right of first refusal. Automated/streamlined permitting for DERs. Creating new opportunities for flexible interconnection."},
+  {state:"Virginia",grantee:"CEBA",types:["TA","Legislative Action"],bills:"",desc:"Targeted outreach to utility commissioners in key PJM states that have obstacles to workable cost allocation paradigms."},
+  {state:"Virginia",grantee:"CATF",types:["Legislative Action"],bills:"",desc:"Stakeholder education on decarbonization technologies including clean electricity standards, improving planning/modeling, removal of moratoriums, and state procurement. Also provides direct lobbying and paid media to support policies."},
+  {state:"Virginia",grantee:"Convergence Center",types:["TA"],bills:"TBD",desc:"Bipartisan stakeholders will develop a shared vision to expand renewable energy and meet rising energy demands in Virginia, laying groundwork for future legislative and regulatory activities."},
+  {state:"West Virginia",grantee:"CEBA",types:["TA","Legislative Action"],bills:"",desc:"Targeted outreach to utility commissioners in key PJM states that have obstacles to workable cost allocation paradigms."},
+];
+
+let activeFilter="All",selectedState=null;
+
+const FIPS={
+  "01":"Alabama","02":"Alaska","04":"Arizona","05":"Arkansas","06":"California",
+  "08":"Colorado","09":"Connecticut","10":"Delaware","12":"Florida","13":"Georgia",
+  "15":"Hawaii","16":"Idaho","17":"Illinois","18":"Indiana","19":"Iowa","20":"Kansas",
+  "21":"Kentucky","22":"Louisiana","23":"Maine","24":"Maryland","25":"Massachusetts",
+  "26":"Michigan","27":"Minnesota","28":"Mississippi","29":"Missouri","30":"Montana",
+  "31":"Nebraska","32":"Nevada","33":"New Hampshire","34":"New Jersey","35":"New Mexico",
+  "36":"New York","37":"North Carolina","38":"North Dakota","39":"Ohio","40":"Oklahoma",
+  "41":"Oregon","42":"Pennsylvania","44":"Rhode Island","45":"South Carolina",
+  "46":"South Dakota","47":"Tennessee","48":"Texas","49":"Utah","50":"Vermont",
+  "51":"Virginia","53":"Washington","54":"West Virginia","55":"Wisconsin","56":"Wyoming"
+};
+
+function mf(d){if(activeFilter==="All")return true;return d.types.some(t=>t===activeFilter)}
+function entriesFor(s){return DATA.filter(d=>d.state===s&&mf(d))}
+function ugCount(s){return new Set(entriesFor(s).map(d=>d.grantee)).size}
+
+const cScale=d3.scaleSequential().domain([0,10]).interpolator(d3.interpolate("#1a3567","#7ab8ff"));
+function stateColor(c){return c===0?"#4a5270":cScale(Math.min(c,10))}
+
+function updateStats(){
+  const es=DATA.filter(mf);
+  document.getElementById("ts").textContent=new Set(es.map(d=>d.state)).size;
+  document.getElementById("te").textContent=es.length;
+}
+
+function renderPanel(s){
+  const es=entriesFor(s);
+  const uc=new Set(es.map(d=>d.grantee)).size;
+  document.getElementById("ptitle").innerHTML=`${s} <span class="chip">${es.length}</span>`;
+  document.getElementById("psub").textContent=`${uc} unique grantee${uc!==1?"s":""} · ${activeFilter==="All"?"all activities":activeFilter}`;
+  const pb=document.getElementById("pb");
+  if(!es.length){
+    pb.innerHTML=`<div class="empty"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#6b7599" stroke-width="1.1"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg><h3>No matches</h3><p>No grantees in ${s} match the current filter.</p></div>`;
+    return;
+  }
+  pb.innerHTML=es.map((e,i)=>{
+    const bHTML=e.types.map(t=>{
+      const cls=t==="TA"?"bTA":t==="Legislative Action"?"bLeg":t==="Elections"?"bElec":"bCoal";
+      const lbl=t==="TA"?"TA":t==="Legislative Action"?"Legislative":t==="Elections"?"Elections":"Coalition";
+      return `<span class="badge ${cls}">${lbl}</span>`;
+    }).join("");
+    let billH="";
+    const b=e.bills;
+    if(b&&b!=="N/A"&&b!==""){
+      if(b==="TBD"){
+        billH=`<div class="bsec"><span class="blabel">Bills</span><div class="btags"><span class="btbd">TBD</span></div></div>`;
+      } else {
+        const tags=b.split(",").map(s=>s.trim()).filter(Boolean);
+        billH=`<div class="bsec"><span class="blabel">Bills</span><div class="btags">${tags.map(t=>`<span class="btag">${t}</span>`).join("")}</div></div>`;
+      }
+    }
+    const dH=e.desc?`<div class="desc">${e.desc}</div>`:"";
+    return `<div class="card" style="animation-delay:${i*.04}s"><div class="ctop"><div class="gname">${e.grantee}</div><div class="badges">${bHTML}</div></div>${billH}${dH}</div>`;
+  }).join("");
+}
+
+// Map
+const svgEl=document.getElementById("mapsvg");
+const tip=document.getElementById("tip");
+let _redraw=null;
+
+fetch("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json")
+  .then(r=>r.json())
+  .then(us=>{
+    const states=topojson.feature(us,us.objects.states);
+    const mesh=topojson.mesh(us,us.objects.states,(a,b)=>a!==b);
+    const svg=d3.select("#mapsvg");
+    const projection=d3.geoAlbersUsa();
+    const path=d3.geoPath().projection(projection);
+
+    function redraw(){
+      const w=svgEl.clientWidth,h=svgEl.clientHeight;
+      if(!w||!h)return;
+      projection.fitSize([w,h],states);
+      svg.selectAll(".state,.sborder").remove();
+      svg.selectAll(".state")
+        .data(states.features).enter().append("path")
+        .attr("class","state")
+        .attr("d",path)
+        .attr("fill",d=>{const n=FIPS[d.id];return n?stateColor(ugCount(n)):"#4a5270"})
+        .attr("opacity",1)
+        .classed("sel",d=>FIPS[d.id]===selectedState)
+        .on("click",(ev,d)=>{
+          const n=FIPS[d.id];if(!n)return;
+          selectedState=n;redraw();renderPanel(n);
+        })
+        .on("mouseenter",(ev,d)=>{
+          const n=FIPS[d.id];if(!n)return;
+          const grantees=[...new Set(entriesFor(n).map(e=>e.grantee))];
+          tip.style.display="block";
+          if(grantees.length===0){
+            tip.innerHTML=`<strong>${n}</strong><span style="color:#6b7599;margin-left:8px">No grantees</span>`;
+          } else {
+            tip.innerHTML=`<strong style="display:block;margin-bottom:5px">${n}</strong>`+grantees.map(g=>`<span style="display:block;font-size:11px;color:#b0bacc">· ${g}</span>`).join("");
+          }
+        })
+        .on("mousemove",ev=>{tip.style.left=(ev.clientX+14)+"px";tip.style.top=(ev.clientY-36)+"px"})
+        .on("mouseleave",()=>{tip.style.display="none"});
+      svg.append("path").datum(mesh).attr("class","sborder").attr("d",path);
+    }
+    _redraw=redraw;
+    redraw();
+    const ro=new ResizeObserver(()=>redraw());
+    ro.observe(svgEl);
+  })
+  .catch(()=>{
+    d3.select("#mapsvg").append("text")
+      .attr("x","50%").attr("y","50%").attr("text-anchor","middle")
+      .attr("fill","#6b7599").attr("font-family","DM Sans").attr("font-size","14")
+      .text("Unable to load map — please check your internet connection.");
+  });
+
+document.querySelectorAll(".fb").forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    document.querySelectorAll(".fb").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    activeFilter=btn.dataset.filter;
+    updateStats();
+    if(_redraw)_redraw();
+    if(selectedState)renderPanel(selectedState);
+  });
+});
+
+updateStats();
+</script>
+</body>
+</html>
